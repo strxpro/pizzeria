@@ -1,7 +1,7 @@
 "use client";
 
 import type { Body as MatterBody, Constraint as MatterConstraint, Engine as MatterEngine } from "matter-js";
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { useT } from "@/lib/i18n/provider";
 
 type OrientationPermission = { requestPermission?: () => Promise<"granted" | "denied"> };
@@ -12,17 +12,34 @@ const PAD = 10;
 const STEP = 1000 / 120;
 /** Grubość niewidocznych ścian. */
 const WALL = 200;
-const MAX_SPEED = 28;
-/** Wzmocnienie przechyłu: lekkie pochylenie telefonu wyraźnie przesuwa naklejki. */
-const TILT_GAIN = 2.4;
-const TILT_MAX = 1.8;
+const MAX_SPEED = 30;
+/** Wzmocnienie przechyłu: małe pochylenie telefonu wyraźnie przesuwa naklejki. */
+const TILT_GAIN = 3.4;
+const TILT_MAX = 2.4;
 
 /**
- * Naklejki z prawdziwą fizyką (matter-js, ładowany dopiero w tej sekcji):
- * - od razu leżą ułożone na dole sekcji (symulacja rusza chwilę przed wjazdem na ekran, bez spadania);
- * - złapane palcem idą za nim, rzucone lecą z rozpędem, odbijają się od siebie i ścian;
- * - przechylenie telefonu zmienia kierunek grawitacji (w prawo = naklejki w prawo), a potrząśnięcie je podrzuca.
- *   iPhone wymaga zgody na czujniki ruchu — wtedy pokazujemy przycisk.
+ * Pozycja startowa (przed włączeniem): naklejki rozrzucone pod znakiem, lekko przekrzywione.
+ * `side` — od której krawędzi liczymy `x` (%), `y` — górna krawędź naklejki (% wysokości), `rot` — stopnie.
+ */
+const START = [
+  { side: "l", x: 3, y: 52, rot: -6 },
+  { side: "r", x: 3, y: 61, rot: 5 },
+  { side: "l", x: 8, y: 70, rot: 3 },
+  { side: "r", x: 6, y: 79, rot: -4 },
+  { side: "l", x: 4, y: 88, rot: -2 },
+] as const;
+
+const place = (node: HTMLElement, x: number, y: number, angle: number) => {
+  node.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotate(${angle.toFixed(3)}rad)`;
+};
+
+/**
+ * Naklejki z prawdziwą fizyką (matter-js, ładowany chwilę przed wjazdem sekcji):
+ * - na starcie leżą spokojnie w pozycji startowej;
+ * - „Włącz ruch telefonem” (albo złapanie naklejki) ożywia je: spadają z miejsca, w którym leżą,
+ *   dają się łapać i rzucać, a przechylenie telefonu zmienia kierunek grawitacji (w prawo = w prawo);
+ * - bez przeszkód w środku, ze śliskimi ścianami i bez usypiania ciał — nic się nie klinuje;
+ * - iPhone wymaga zgody na czujniki ruchu (prosimy o nią po stuknięciu w przycisk).
  * Symulacja działa tylko, gdy sekcja jest widoczna; pozycje wpisujemy jako `transform`.
  */
 export function StickerPhysics({ labels, tones, children, className = "" }: { labels: string[]; tones: string[]; children?: ReactNode; className?: string }) {
@@ -31,135 +48,157 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
   const els = useRef<(HTMLLIElement | null)[]>([]);
   const engineRef = useRef<MatterEngine | null>(null);
   const bodies = useRef<MatterBody[]>([]);
+  const walls = useRef<MatterBody[]>([]);
+  const sizes = useRef<{ w: number; h: number }[]>([]);
   const grab = useRef<{ constraint: MatterConstraint; pointerId: number } | null>(null);
   const matter = useRef<typeof import("matter-js") | null>(null);
-  const walls = useRef<MatterBody[]>([]);
-  const [ready, setReady] = useState(false);
-  const [motion, setMotion] = useState<"off" | "ask" | "on">("off");
+  const visible = useRef(false);
+  const liveRef = useRef(false);
+  const [placed, setPlaced] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [live, setLive] = useState(false);
+  const [touch, setTouch] = useState(false);
+  const [motion, setMotion] = useState<"off" | "on">("off");
 
+  // Pozycja startowa — liczona z rozmiaru sekcji, zanim cokolwiek się pokaże.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const arrange = () => {
+      if (liveRef.current) return;
+      const W = el.clientWidth;
+      const H = el.clientHeight;
+      els.current.forEach((node, i) => {
+        if (!node) return;
+        const s = START[i % START.length];
+        const w = node.offsetWidth;
+        const h = node.offsetHeight;
+        const left = s.side === "l" ? (W * s.x) / 100 : W - (W * s.x) / 100 - w;
+        const x = Math.max(PAD, Math.min(W - PAD - w, left));
+        const y = Math.max(PAD, Math.min(H - PAD - h, (H * s.y) / 100));
+        place(node, x, y, (s.rot * Math.PI) / 180);
+      });
+    };
+    arrange();
+    const id = setTimeout(() => setPlaced(true), 0);
+    const ro = new ResizeObserver(arrange);
+    ro.observe(el);
+    return () => {
+      clearTimeout(id);
+      ro.disconnect();
+    };
+  }, [labels]);
+
+  useEffect(() => {
+    const id = setTimeout(() => setTouch(window.matchMedia("(pointer: coarse)").matches && "DeviceMotionEvent" in window), 0);
+    return () => clearTimeout(id);
+  }, []);
+
+  // Widoczność: wczytanie biblioteki z wyprzedzeniem, symulacja tylko na ekranie.
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    let raf = 0;
-    let visible = false;
-    let started = false;
-    let alive = true;
-    let last = 0;
-
-    const start = async () => {
-      if (started) return;
-      started = true;
-      const M = (await import("matter-js")).default;
-      if (!alive) return;
-      matter.current = M;
-      const { Engine, Bodies, Composite } = M;
-      const engine = Engine.create({ enableSleeping: true, positionIterations: 10, velocityIterations: 8, constraintIterations: 4 });
-      engine.gravity.y = 1;
-      engineRef.current = engine;
-
-      const W = el.clientWidth;
-      const H = el.clientHeight;
-      walls.current = [
-        Bodies.rectangle(W / 2, H - PAD + WALL / 2, W * 3, WALL, { isStatic: true, friction: 0.9 }),
-        Bodies.rectangle(PAD - WALL / 2, H / 2, WALL, H * 4, { isStatic: true, friction: 0.2 }),
-        Bodies.rectangle(W - PAD + WALL / 2, H / 2, WALL, H * 4, { isStatic: true, friction: 0.2 }),
-        Bodies.rectangle(W / 2, PAD - WALL / 2, W * 3, WALL, { isStatic: true }),
-      ];
-      Composite.add(engine.world, walls.current);
-      // elementy dekoracji oznaczone data-physics-obstacle (np. znak pizzerii) są okrągłymi przeszkodami
-      const origin = el.getBoundingClientRect();
-      el.querySelectorAll<HTMLElement>("[data-physics-obstacle]").forEach((o) => {
-        const r = o.getBoundingClientRect();
-        Composite.add(engine.world, Bodies.circle(r.left - origin.left + r.width / 2, r.top - origin.top + r.height / 2, (Math.min(r.width, r.height) / 2) * 0.92, { isStatic: true, friction: 0.4 }));
-      });
-
-      const sizes = els.current.map((node) => ({ w: node?.offsetWidth ?? 120, h: node?.offsetHeight ?? 48 }));
-      // Układ startowy: rzędy od dołu sekcji, jak ułożone ręcznie (bez spadania z góry).
-      const slots: { x: number; y: number }[] = [];
-      let rowX = PAD + 6;
-      let rowY = H - PAD;
-      let rowH = 0;
-      sizes.forEach(({ w, h }) => {
-        if (rowX + w > W - PAD && rowX > PAD + 6) {
-          rowY -= rowH + 4;
-          rowX = PAD + 6;
-          rowH = 0;
-        }
-        slots.push({ x: Math.min(W - PAD - w / 2, rowX + w / 2), y: rowY - h / 2 });
-        rowX += w + 4;
-        rowH = Math.max(rowH, h);
-      });
-      bodies.current = sizes.map(({ w, h }, i) => {
-        const { x, y } = slots[i];
-        const body = Bodies.rectangle(x, y, w, h, {
-          chamfer: { radius: h / 2 - 1 },
-          angle: (i % 2 ? 1 : -1) * 0.04,
-          restitution: 0.18,
-          friction: 0.45,
-          frictionStatic: 0.8,
-          frictionAir: 0.02,
-          density: 0.0018,
-          slop: 0.02,
-        });
-        return body;
-      });
-      Composite.add(engine.world, bodies.current);
-      // Symulacja „na zapas” przed pokazaniem: naklejki od razu leżą spokojnie na miejscu.
-      for (let s = 0; s < 240; s++) Engine.update(engine, STEP);
-      bodies.current.forEach((b, i) => {
-        const node = els.current[i];
-        if (node) node.style.transform = `translate3d(${(b.position.x - sizes[i].w / 2).toFixed(1)}px, ${(b.position.y - sizes[i].h / 2).toFixed(1)}px, 0) rotate(${b.angle.toFixed(3)}rad)`;
-      });
-      setReady(true);
-
-      let acc = 0;
-      const tick = (now: number) => {
-        raf = requestAnimationFrame(tick);
-        const dt = last ? Math.min(now - last, 50) : STEP;
-        last = now;
-        if (!visible) return;
-        // stały krok: tyle kroków, ile zmieściło się od ostatniej klatki (najwyżej 6)
-        acc += dt;
-        let steps = 0;
-        while (acc >= STEP && steps < 6) {
-          Engine.update(engine, STEP);
-          acc -= STEP;
-          steps++;
-        }
-        if (steps === 6) acc = 0;
-        // bez „wystrzeliwania” — prędkość ograniczona
-        for (const b of bodies.current) {
-          const v = b.velocity;
-          const speed = Math.hypot(v.x, v.y);
-          if (speed > MAX_SPEED) M.Body.setVelocity(b, { x: (v.x / speed) * MAX_SPEED, y: (v.y / speed) * MAX_SPEED });
-        }
-        bodies.current.forEach((b, i) => {
-          const node = els.current[i];
-          if (!node) return;
-          node.style.transform = `translate3d(${(b.position.x - sizes[i].w / 2).toFixed(1)}px, ${(b.position.y - sizes[i].h / 2).toFixed(1)}px, 0) rotate(${b.angle.toFixed(3)}rad)`;
-        });
-      };
-      raf = requestAnimationFrame(tick);
-    };
-
     const io = new IntersectionObserver(
       ([e]) => {
-        visible = e.isIntersecting;
-        last = 0;
-        if (visible) start();
+        visible.current = e.isIntersecting;
+        if (!e.isIntersecting) return;
+        setShown(true);
+        if (!matter.current) import("matter-js").then((m) => (matter.current = m.default));
       },
-      // start chwilę przed wjazdem na ekran — naklejki są już ułożone, gdy sekcja się pokaże
-      { rootMargin: "0px 0px 300px 0px" },
+      { rootMargin: "0px 0px 240px 0px" },
     );
     io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  /** Ożywienie: ciała w miejscach, w których naklejki leżą teraz, i grawitacja w dół. */
+  const activate = async () => {
+    if (liveRef.current) return true;
+    const el = box.current;
+    if (!el) return false;
+    const M = matter.current ?? (await import("matter-js")).default;
+    matter.current = M;
+    if (liveRef.current) return true;
+    liveRef.current = true;
+
+    const { Engine, Bodies, Composite } = M;
+    const engine = Engine.create({ enableSleeping: false, positionIterations: 10, velocityIterations: 8, constraintIterations: 4 });
+    engine.gravity.y = 1;
+    engineRef.current = engine;
+
+    const W = el.clientWidth;
+    const H = el.clientHeight;
+    // ściany bez tarcia — naklejka nie zaklinuje się w poprzek sekcji
+    walls.current = [
+      Bodies.rectangle(W / 2, H - PAD + WALL / 2, W * 3, WALL, { isStatic: true, friction: 0.3 }),
+      Bodies.rectangle(PAD - WALL / 2, H / 2, WALL, H * 4, { isStatic: true, friction: 0 }),
+      Bodies.rectangle(W - PAD + WALL / 2, H / 2, WALL, H * 4, { isStatic: true, friction: 0 }),
+      Bodies.rectangle(W / 2, PAD - WALL / 2, W * 3, WALL, { isStatic: true, friction: 0 }),
+    ];
+    Composite.add(engine.world, walls.current);
+
+    const origin = el.getBoundingClientRect();
+    sizes.current = els.current.map((node) => ({ w: node?.offsetWidth ?? 120, h: node?.offsetHeight ?? 48 }));
+    bodies.current = els.current.map((node, i) => {
+      const { w, h } = sizes.current[i];
+      const r = node?.getBoundingClientRect();
+      const cx = r ? r.left - origin.left + r.width / 2 : W / 2;
+      const cy = r ? r.top - origin.top + r.height / 2 : H / 2;
+      return Bodies.rectangle(cx, cy, w, h, {
+        chamfer: { radius: h / 2 - 1 },
+        angle: (START[i % START.length].rot * Math.PI) / 180,
+        restitution: 0.2,
+        friction: 0.06,
+        frictionStatic: 0.12,
+        frictionAir: 0.012,
+        density: 0.0018,
+        slop: 0.02,
+      });
+    });
+    Composite.add(engine.world, bodies.current);
+    setLive(true);
+    return true;
+  };
+
+  // Pętla symulacji po ożywieniu.
+  useEffect(() => {
+    if (!live) return;
+    const engine = engineRef.current;
+    const M = matter.current;
+    const el = box.current;
+    if (!engine || !M || !el) return;
+    let raf = 0;
+    let last = 0;
+    let acc = 0;
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const dt = last ? Math.min(now - last, 50) : STEP;
+      last = now;
+      if (!visible.current) return;
+      acc += dt;
+      let steps = 0;
+      while (acc >= STEP && steps < 6) {
+        M.Engine.update(engine, STEP);
+        acc -= STEP;
+        steps++;
+      }
+      if (steps === 6) acc = 0;
+      bodies.current.forEach((b, i) => {
+        const v = b.velocity;
+        const speed = Math.hypot(v.x, v.y);
+        if (speed > MAX_SPEED) M.Body.setVelocity(b, { x: (v.x / speed) * MAX_SPEED, y: (v.y / speed) * MAX_SPEED });
+        const node = els.current[i];
+        if (node) place(node, b.position.x - sizes.current[i].w / 2, b.position.y - sizes.current[i].h / 2, b.angle);
+      });
+    };
+    raf = requestAnimationFrame(tick);
 
     // Obrót telefonu zmienia szerokość sekcji — ściany jadą za nią, naklejki zostają w środku.
     let size = { w: el.clientWidth, h: el.clientHeight };
     const ro = new ResizeObserver(() => {
-      const M = matter.current;
       const W = el.clientWidth;
       const H = el.clientHeight;
-      if (!M || !walls.current.length || (Math.abs(W - size.w) < 2 && Math.abs(H - size.h) < 2)) return;
+      if (Math.abs(W - size.w) < 2 && Math.abs(H - size.h) < 2) return;
       size = { w: W, h: H };
       const [floor, left, right, top] = walls.current;
       M.Body.setPosition(floor, { x: W / 2, y: H - PAD + WALL / 2 });
@@ -167,48 +206,33 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
       M.Body.setPosition(right, { x: W - PAD + WALL / 2, y: H / 2 });
       M.Body.setPosition(top, { x: W / 2, y: PAD - WALL / 2 });
       for (const b of bodies.current) {
-        M.Sleeping.set(b, false);
         M.Body.setPosition(b, { x: Math.min(W - PAD - 40, Math.max(PAD + 40, b.position.x)), y: Math.min(H - PAD - 30, Math.max(PAD + 30, b.position.y)) });
       }
     });
     ro.observe(el);
 
     return () => {
-      alive = false;
-      ro.disconnect();
-      io.disconnect();
       cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [live]);
+
+  useEffect(
+    () => () => {
       if (engineRef.current && matter.current) matter.current.Engine.clear(engineRef.current);
       engineRef.current = null;
-    };
-  }, []);
+    },
+    [],
+  );
 
-  // Czujniki ruchu: Android od razu, iPhone po zgodzie (przycisk).
+  // Czujniki ruchu — dopiero po włączeniu.
   useEffect(() => {
-    if (typeof window === "undefined" || !("DeviceOrientationEvent" in window)) return;
-    if (!window.matchMedia("(pointer: coarse)").matches) return;
-    const needsPermission = typeof (DeviceOrientationEvent as unknown as OrientationPermission).requestPermission === "function";
-    const id = setTimeout(() => setMotion(needsPermission ? "ask" : "on"), 0);
-    return () => clearTimeout(id);
-  }, []);
-
-  useEffect(() => {
-    if (motion !== "on") return;
+    if (motion !== "on" || !live) return;
     const clamp = (v: number) => Math.max(-TILT_MAX, Math.min(TILT_MAX, v));
 
-    // Przy włączonym przechyle naklejki ślizgają się łatwiej — reagują na małe pochylenie.
-    const slippery = () => {
-      for (const b of bodies.current) {
-        b.friction = 0.08;
-        b.frictionStatic = 0.1;
-      }
-    };
-    slippery();
-
     // Kierunek bierzemy z wektora grawitacji czujnika, nie z kątów beta/gamma: kąty „wariują”,
-    // gdy telefon stoi pionowo (wtedy przechył w bok to zupełnie inna oś).
-    // Safari i Chrome podają ten wektor z przeciwnym znakiem — znak ustalamy sami: gdy telefon
-    // jest wyraźnie pionowo (beta), grawitacja musi ciągnąć w dół ekranu.
+    // gdy telefon stoi pionowo. Safari i Chrome podają ten wektor z przeciwnym znakiem — znak
+    // ustalamy sami: gdy telefon jest wyraźnie pionowo (beta), grawitacja ciągnie w dół ekranu.
     const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     let flip = apple ? -1 : 1;
     let calibrated = false;
@@ -230,8 +254,6 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
       const engine = engineRef.current;
       const M = matter.current;
       if (!engine || !M) return;
-      if (!bodies.current.length) return;
-      if (bodies.current[0].frictionStatic !== 0.1) slippery();
 
       const g = e.accelerationIncludingGravity;
       if (g && g.x !== null && g.y !== null) {
@@ -249,14 +271,9 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
         if (angle === 90) [dx, dy] = [dy, -dx];
         else if (angle === 180) [dx, dy] = [-dx, -dy];
         else if (angle === 270) [dx, dy] = [-dy, dx];
-        const tx = clamp(dx * TILT_GAIN);
-        const ty = clamp(dy * TILT_GAIN);
-        // lekkie wygładzenie — bez drżenia ręki, ale z natychmiastową reakcją
-        gx += (tx - gx) * 0.35;
-        gy += (ty - gy) * 0.35;
-        if (Math.abs(gx - engine.gravity.x) + Math.abs(gy - engine.gravity.y) > 0.01) {
-          for (const b of bodies.current) if (b.isSleeping) M.Sleeping.set(b, false);
-        }
+        // wygładzenie tylko od drżenia ręki — reakcja praktycznie natychmiastowa
+        gx += (clamp(dx * TILT_GAIN) - gx) * 0.55;
+        gy += (clamp(dy * TILT_GAIN) - gy) * 0.55;
         engine.gravity.x = gx;
         engine.gravity.y = gy;
       }
@@ -265,10 +282,9 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
       if (!a) return;
       const force = Math.hypot(a.x ?? 0, a.y ?? 0, a.z ?? 0);
       const now = Date.now();
-      if (force < 14 || now - lastShake < 400) return;
+      if (force < 13 || now - lastShake < 400) return;
       lastShake = now;
       bodies.current.forEach((b) => {
-        M.Sleeping.set(b, false);
         M.Body.setVelocity(b, { x: (Math.random() - 0.5) * 18, y: -10 - Math.random() * 12 });
         M.Body.setAngularVelocity(b, (Math.random() - 0.5) * 0.4);
       });
@@ -283,22 +299,22 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
         engineRef.current.gravity.x = 0;
         engineRef.current.gravity.y = 1;
       }
-      for (const b of bodies.current) {
-        b.friction = 0.45;
-        b.frictionStatic = 0.8;
-      }
     };
-  }, [motion]);
+  }, [motion, live]);
 
-  const askMotion = async () => {
+  const enableMotion = async () => {
     try {
-      const result = await (DeviceOrientationEvent as unknown as OrientationPermission).requestPermission?.();
+      const orientation = (DeviceOrientationEvent as unknown as OrientationPermission).requestPermission;
       const motionPermission = (DeviceMotionEvent as unknown as OrientationPermission).requestPermission;
-      if (motionPermission) await motionPermission().catch(() => "denied");
-      setMotion(result === "granted" ? "on" : "off");
+      // prośby o zgodę muszą paść od razu po stuknięciu (iPhone), przed czymkolwiek innym
+      const results = await Promise.all([orientation ? orientation() : "granted", motionPermission ? motionPermission() : "granted"]);
+      if (results.every((r) => r === "granted")) setMotion("on");
+      else setTouch(false);
     } catch {
-      setMotion("off");
+      // brak zgody — naklejki i tak ożyją, tylko bez przechyłu
+      setTouch(false);
     }
+    await activate();
   };
 
   const toBox = (e: PointerEvent) => {
@@ -306,17 +322,20 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  const onDown = (i: number) => (e: PointerEvent<HTMLLIElement>) => {
-    const M = matter.current;
-    const engine = engineRef.current;
-    const body = bodies.current[i];
-    if (!M || !engine || !body) return;
+  const onDown = (i: number) => async (e: PointerEvent<HTMLLIElement>) => {
+    const target = e.currentTarget;
+    const pointerId = e.pointerId;
     try {
-      e.currentTarget.setPointerCapture(e.pointerId);
+      target.setPointerCapture(pointerId);
     } catch {
       /* wskaźnik już zniknął */
     }
     const p = toBox(e);
+    if (!(await activate())) return;
+    const M = matter.current;
+    const engine = engineRef.current;
+    const body = bodies.current[i];
+    if (!M || !engine || !body) return;
     // punkt chwytu względem środka naklejki, w jej obróconym układzie
     const dx = p.x - body.position.x;
     const dy = p.y - body.position.y;
@@ -326,13 +345,12 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
       pointA: p,
       bodyB: body,
       pointB: { x: dx * cos - dy * sin, y: dx * sin + dy * cos },
-      stiffness: 0.1,
+      stiffness: 0.18,
       damping: 0.12,
       length: 0,
     });
-    M.Sleeping.set(body, false);
     M.Composite.add(engine.world, constraint);
-    grab.current = { constraint, pointerId: e.pointerId };
+    grab.current = { constraint, pointerId };
   };
 
   const onMove = (e: PointerEvent<HTMLLIElement>) => {
@@ -352,26 +370,36 @@ export function StickerPhysics({ labels, tones, children, className = "" }: { la
     <div ref={box} className={`relative w-full ${className}`}>
       {children}
       <ul>
-          {labels.map((label, i) => (
-            <li
-              key={i}
-              ref={(node) => {
-                els.current[i] = node;
-              }}
-              onPointerDown={onDown(i)}
-              onPointerMove={onMove}
-              onPointerUp={onUp}
-              onPointerCancel={onUp}
-              className={`absolute top-0 left-0 cursor-grab touch-none rounded-full px-[0.5em] py-[0.12em] text-[1.55rem] leading-[1.05] font-extrabold tracking-tight whitespace-nowrap shadow-[0_8px_0_rgb(18_12_8/0.15)] transition-opacity duration-300 select-none active:cursor-grabbing ${tones[i]} ${
-                ready ? "opacity-100" : "opacity-0"
+        {labels.map((label, i) => (
+          <li
+            key={i}
+            ref={(node) => {
+              els.current[i] = node;
+            }}
+            onPointerDown={onDown(i)}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            className="absolute top-0 left-0 cursor-grab touch-none select-none active:cursor-grabbing"
+          >
+            {/* pojawienie się (skala) na wewnętrznym elemencie — nie miesza się z pozycją z fizyki */}
+            <span
+              style={{ transitionDelay: `${i * 70}ms` }}
+              className={`block rounded-full px-[0.5em] py-[0.12em] text-[1.55rem] leading-[1.05] font-extrabold tracking-tight whitespace-nowrap shadow-[0_8px_0_rgb(18_12_8/0.15)] transition-[opacity,scale] duration-500 ease-(--ease-out) ${tones[i]} ${
+                placed && shown ? "scale-100 opacity-100" : "scale-75 opacity-0"
               }`}
             >
               {label}
-            </li>
-          ))}
+            </span>
+          </li>
+        ))}
       </ul>
-      {motion === "ask" ? (
-        <button type="button" onClick={askMotion} className="btn-3d btn-3d-sm absolute top-3 left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-4 text-sm font-extrabold whitespace-nowrap text-paper">
+      {touch && motion === "off" ? (
+        <button
+          type="button"
+          onClick={enableMotion}
+          className="btn-3d btn-3d-sm absolute top-[40%] left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-4 text-sm font-extrabold whitespace-nowrap text-paper"
+        >
           <PhoneTiltIcon />
           {t.why.motion}
         </button>

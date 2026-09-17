@@ -2,7 +2,7 @@
 
 import { motion, useMotionValueEvent, useReducedMotion, useScroll } from "motion/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RESTAURANT } from "@/lib/data";
 import { useT } from "@/lib/i18n/provider";
 import { cheeseGo } from "./cheese";
@@ -63,9 +63,17 @@ export function SiteHeader() {
     };
   }, []);
 
+  // Punkt ostatniej zmiany kierunku: nagłówek reaguje dopiero po kilkunastu pikselach ruchu
+  // w jedną stronę — drgnięcia palca i odbicie na końcu strony go nie szarpią.
+  const turn = useRef({ at: 0, dir: 0 });
   useMotionValueEvent(scrollY, "change", (y) => {
     const prev = scrollY.getPrevious() ?? 0;
-    setHidden(y > 240 && y > prev);
+    if (y <= 240) return setHidden(false);
+    if (y === prev) return;
+    const dir = y > prev ? 1 : -1;
+    if (dir !== turn.current.dir) turn.current = { at: prev, dir };
+    if (dir === 1 && y - turn.current.at > 16) setHidden(true);
+    if (dir === -1 && turn.current.at - y > 16) setHidden(false);
   });
 
   useEffect(() => () => lockScroll(false, "menu"), []);

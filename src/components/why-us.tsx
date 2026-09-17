@@ -85,7 +85,7 @@ export function WhyUs() {
             </HandNote>
           </>
         ) : (
-          /* telefon i tablet: cała sekcja jest światem fizyki — naklejki spadają, dają się rzucać, reagują na przechylenie */
+          /* telefon i tablet: naklejki leżą w pozycji startowej; po włączeniu ruchu spadają, dają się rzucać i reagują na przechylenie */
           reduced ? (
             <div>
               <TitleArc title={t.why.title} />
@@ -102,7 +102,7 @@ export function WhyUs() {
               <div className="pointer-events-none relative mx-auto w-[min(86vw,26rem)] pt-4">
                 <TitleArc title={t.why.title} />
               </div>
-              <HandNote rotate={-4} className="pointer-events-none absolute inset-x-0 top-[46%] text-center opacity-80">
+              <HandNote rotate={-4} className="pointer-events-none absolute inset-x-0 top-[47%] text-center opacity-80">
                 {t.why.physics}
               </HandNote>
             </StickerPhysics>
@@ -113,7 +113,7 @@ export function WhyUs() {
   );
 }
 
-/** Napis po łuku nad znakiem pizzerii. Znak jest przeszkodą w świecie fizyki (telefon). */
+/** Napis po łuku nad znakiem pizzerii. */
 function TitleArc({ title }: { title: string }) {
   return (
     <>
@@ -126,7 +126,7 @@ function TitleArc({ title }: { title: string }) {
           </textPath>
         </text>
       </svg>
-      <div data-physics-obstacle className="mx-auto -mt-2 w-[46%]">
+      <div className="mx-auto -mt-2 w-[46%]">
         <Mark className="w-full text-[#7a1033] opacity-90" />
       </div>
     </>

@@ -17,7 +17,9 @@ const DOCK_PAD = 20;
 /**
  * Miejsce pod karuzelą menu, w które pływający koszyk „wpada” przy przewijaniu.
  * Na komputerze gniazdo ma kształt przycisku: pusty koszyk — kółko, a gdy pojawia się
- * kwota, gniazdo sprężyście poszerza się razem z nim. Na telefonie to pełny pasek.
+ * kwota, gniazdo sprężyście poszerza się razem z nim. Na telefonie gniazda nie ma: tam pasek
+ * zostaje przy dolnej krawędzi — przestawianie go z JavaScriptu przy rzadkich zdarzeniach
+ * przewijania w telefonie wyglądało jak teleportowanie.
  */
 export function CartDockSlot() {
   const wide = useMedia("(min-width: 1024px)");
@@ -43,7 +45,7 @@ export function CartDockSlot() {
   }, [wide, isOpen, width]);
 
   return (
-    <div aria-hidden className="relative mx-auto flex h-28 items-center justify-center px-3">
+    <div aria-hidden className="relative mx-auto hidden h-28 items-center justify-center px-3 lg:flex">
       {/* pełne „łóżko” na koszyk z wcięciem w środek — bez przezroczystych przerw */}
       <motion.span
         data-cart-dock

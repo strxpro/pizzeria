@@ -8,7 +8,7 @@ import { euro, isPaused } from "@/lib/format";
 import { useShop } from "@/lib/shop";
 import { useT } from "@/lib/i18n/provider";
 import { useOrder, type Mode } from "@/lib/order";
-import { CartBadge, CartButton, ReceiptPopover, useCartDock, useReceipt } from "./cart-receipt";
+import { CartBadge, CartButton, ReceiptPopover, useReceipt } from "./cart-receipt";
 import { cheeseGo } from "./cheese";
 import { PhoneIcon } from "./hero";
 import { HandNote } from "./kit";
@@ -347,7 +347,6 @@ function MobileDock() {
   const t = useT();
   const reduced = useReducedMotion();
   const { open, setOpen, root } = useReceipt();
-  const { el, y } = useCartDock();
   const panelId = useId();
   const hidden = useDockHidden(open);
   if (order.isOpen) return null;
@@ -360,7 +359,7 @@ function MobileDock() {
       animate={{ y: hidden ? "140%" : "0%" }}
       transition={reduced ? { duration: 0 } : hidden ? { duration: 0.35, ease: [0.4, 0, 1, 1] } : { type: "spring", stiffness: 260, damping: 28 }}
     >
-      <motion.div ref={el} style={{ y }} className="pb-[5px]">
+      <div className="pb-[5px]">
       <ReceiptPopover open={open} id={panelId} onCheckout={() => setOpen(false)} className="inset-x-0 bottom-full mx-auto mb-4 w-[min(22rem,100%)]" />
       <nav aria-label={t.nav.quick} data-dock-target className="flex h-[4.25rem] items-center gap-1.5 rounded-full border-[2.5px] border-ink bg-paper px-1.5 pb-[3px] shadow-[0_5px_0_var(--color-ink)]">
         <button type="button" onClick={() => cheeseGo("#menu", t.nav.menu)} className="btn-3d btn-3d-sm flex h-12 flex-1 items-center justify-center rounded-full bg-paper font-extrabold">
@@ -380,7 +379,7 @@ function MobileDock() {
           {order.count ? <span className="tabular">{euro(order.total)}</span> : <span className="sr-only">{t.order.cart}</span>}
         </button>
       </nav>
-      </motion.div>
+      </div>
     </motion.div>
   );
 }
