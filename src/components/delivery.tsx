@@ -1,20 +1,22 @@
 "use client";
 
 import { useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { RESTAURANT, ZONES } from "@/lib/data";
 import { euro } from "@/lib/format";
 import { useScrollSpring } from "@/lib/scroll-spring";
 import { useT } from "@/lib/i18n/provider";
 import { useOrder } from "@/lib/order";
+import { DeliveryMap } from "./delivery-map";
 import { HandNote, Pill } from "./kit";
 import { Liquid } from "./liquid";
 import { LocateButton } from "./locate-button";
 
 /**
  * Dostawa: napis po krzywej przepływa przez cały ekran razem z przewijaniem,
- * a pod nim żółty panel — po lewej mapa Google z pizzerią, po prawej wybór
- * dostawa/odbiór i „użyj mojej pozycji” (strefa liczy się sama).
+ * a pod nim żółty panel — po lewej mapa (Leaflet) z pokazową dostawą po prawdziwych
+ * ulicach, po prawej wybór dostawa/odbiór i „użyj mojej pozycji” (strefa liczy się sama).
+ * Na komputerze panel zajmuje cały ekran.
  */
 export function Delivery() {
   const t = useT();
@@ -25,7 +27,7 @@ export function Delivery() {
 
   // Od wejścia napisu na ekran do jego wyjścia: wjeżdża zza prawej krawędzi i wyjeżdża w lewo.
   const { scrollYProgress } = useScroll({ target: curve, offset: ["start end", "end start"] });
-  const offset = useScrollSpring(useTransform(scrollYProgress, [0, 1], [78, -48]), { stiffness: 130, damping: 26 }, 26);
+  const offset = useScrollSpring(useTransform(scrollYProgress, [0, 1], [78, -48]), { stiffness: 160, damping: 28 }, 60);
   useMotionValueEvent(offset, "change", (v) => {
     if (!reduced) textPath.current?.setAttribute("startOffset", `${v}%`);
   });
@@ -61,10 +63,10 @@ export function Delivery() {
       </svg>
       </div>
 
-      <div className="relative isolate mx-3 mt-6 overflow-hidden rounded-(--radius-panel) bg-giallo py-(--spacing-section) md:mx-4">
+      <div className="relative isolate mx-3 mt-6 overflow-hidden rounded-(--radius-panel) bg-giallo py-(--spacing-section) md:mx-4 lg:flex lg:min-h-[100vh] lg:items-center lg:py-12">
         <Liquid layers={[{ color: "#ffe38a", x: -10, y: 40, size: 60, seed: 41, duration: 20 }, { color: "#ffb326", x: 60, y: -25, size: 55, seed: 42, duration: 24, opacity: 0.8 }]} />
 
-        <div className="container-page grid gap-12 lg:grid-cols-2 lg:gap-16">
+        <div className="container-page grid w-full gap-12 lg:grid-cols-2 lg:items-center lg:gap-16">
           <MapCard />
 
           <div className="flex flex-col">
@@ -127,34 +129,14 @@ export function Delivery() {
   );
 }
 
-/**
- * Mapa Google osadzona bez klucza API. Dopóki klient jej nie kliknie, nie łapie
- * kółka myszy — inaczej przewijanie strony „utykałoby” na mapie.
- */
+/** Mapa z pokazową dostawą (wczytywana razem ze stroną) i adres pizzerii pod nią. */
 function MapCard() {
   const t = useT();
-  const [active, setActive] = useState(false);
-  const src = `https://www.google.com/maps?q=${encodeURIComponent(RESTAURANT.mapsQuery)}&output=embed`;
 
   return (
     <div className="flex flex-col">
       <div className="relative -rotate-1 overflow-hidden rounded-[2rem] border-[2.5px] border-ink bg-paper shadow-[0_8px_0_var(--color-ink)]">
-        <iframe
-          title={t.delivery.mapTitle(RESTAURANT.mapsQuery)}
-          src={src}
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          className={`block aspect-[4/3.4] w-full ${active ? "" : "pointer-events-none"}`}
-        />
-        {active ? null : (
-          <button
-            type="button"
-            onClick={() => setActive(true)}
-            className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-ink/35 to-transparent pb-5"
-          >
-            <span className="btn-3d btn-3d-sm rounded-full bg-paper px-4 py-2 text-sm font-bold">{t.delivery.mapTap}</span>
-          </button>
-        )}
+        <DeliveryMap className="aspect-[4/4.2] w-full sm:aspect-[4/3.4] lg:aspect-auto lg:h-[min(68vh,44rem)]" />
       </div>
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>

@@ -1,20 +1,14 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import type { LatLngTuple, Map as LeafletMap, Marker } from "leaflet";
-import { useEffect, useRef } from "react";
+import type { Map as LeafletMap, Marker, Polyline } from "leaflet";
+import { useEffect, useRef, useState } from "react";
 import type { OrderStatus } from "@/lib/data";
 import { PIZZERIA, type LatLng } from "@/lib/geo";
 import { useT } from "@/lib/i18n/provider";
+import { curvePoint, loadRoute, pathUntil, pointAt, type RoutePath } from "@/lib/route-path";
 
-/** Punkt na łuku między pizzerią a domem — ten sam łuk rysuje trasę i niesie skuter. */
-function curvePoint(a: LatLng, b: LatLng, t: number): LatLngTuple {
-  const c = { lat: (a.lat + b.lat) / 2 - (b.lng - a.lng) * 0.25, lng: (a.lng + b.lng) / 2 + (b.lat - a.lat) * 0.25 };
-  const u = 1 - t;
-  return [u * u * a.lat + 2 * u * t * c.lat + t * t * b.lat, u * u * a.lng + 2 * u * t * c.lng + t * t * b.lng];
-}
-
-const pin = (color: string, label: string) => `
+export const pin = (color: string, label: string) => `
   <div class="map-pin">
     <svg viewBox="-18 -48 36 50" width="36" height="50" aria-hidden="true">
       <path d="M0 0c-10-12-16-20-16-28a16 16 0 0 1 32 0c0 8-6 16-16 28Z" fill="${color}" stroke="#120c08" stroke-width="3"/>
@@ -23,7 +17,7 @@ const pin = (color: string, label: string) => `
     <span>${label}</span>
   </div>`;
 
-const RIDER = `
+export const RIDER = `
   <div class="map-rider">
     <svg viewBox="-20 -20 40 40" width="40" height="40" aria-hidden="true">
       <circle r="18" fill="#ffcf3f" stroke="#120c08" stroke-width="3"/>
@@ -33,8 +27,9 @@ const RIDER = `
 
 /**
  * Mapa śledzenia na Leaflet (bez klucza API): kafelki CARTO na danych OpenStreetMap,
- * pinezki pizzerii i klienta, przerywany łuk trasy i skuter: w prawdziwej pozycji, gdy kierowca
- * udostępnia GPS z panelu, a bez tego w pozycji SZACOWANEJ z czasu jazdy.
+ * pinezki pizzerii i klienta, trasa po prawdziwych ulicach (OSRM; bez odpowiedzi — łuk)
+ * i skuter: w prawdziwej pozycji, gdy kierowca udostępnia GPS z panelu, a bez tego
+ * w pozycji SZACOWANEJ z czasu jazdy — jedzie wtedy po tej samej trasie.
  *
  * Mapa nie przejmuje przewijania strony: kółko myszy nie przybliża, a na dotyku
  * jeden palec przewija stronę (mapę przesuwa się dwoma palcami / przybliża gestem).
@@ -61,6 +56,8 @@ export function RouteMap({
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const rider = useRef<Marker | null>(null);
+  const trail = useRef<Polyline | null>(null);
+  const [path, setPath] = useState<RoutePath | null>(null);
   const riding = delivery && (status === "in_viaggio" || status === "consegnato");
   // Bez GPS klienta dom stoi w umownym miejscu — trasa jest poglądowa.
   const target = home ?? { lat: PIZZERIA.lat + 0.008, lng: PIZZERIA.lng + 0.012 };
@@ -91,11 +88,16 @@ export function RouteMap({
       L.marker([PIZZERIA.lat, PIZZERIA.lng], { icon: icon(pin("#ff5a36", "Pizzeria"), [36, 50], [18, 48]), keyboard: false }).addTo(m);
 
       if (delivery) {
-        const points = Array.from({ length: 33 }, (_, i) => curvePoint(PIZZERIA, target, i / 32));
-        L.polyline(points, { color: "#120c08", weight: 4, dashArray: "2 10", lineCap: "round" }).addTo(m);
         L.marker([target.lat, target.lng], { icon: icon(pin("#3fd38a", homeLabel ?? t.tracking.you), [36, 50], [18, 48]), keyboard: false }).addTo(m);
-        rider.current = L.marker(curvePoint(PIZZERIA, target, 0), { icon: icon(RIDER, [40, 40], [20, 20]), keyboard: false, opacity: 0 }).addTo(m);
+        rider.current = L.marker(curvePoint(PIZZERIA, target, 0), { icon: icon(RIDER, [40, 40], [20, 20]), keyboard: false, opacity: 0, zIndexOffset: 1000 }).addTo(m);
         m.fitBounds(L.latLngBounds([[PIZZERIA.lat, PIZZERIA.lng], [target.lat, target.lng]]), { padding: [56, 56], maxZoom: 16 });
+        // prawdziwa trasa po ulicach — dorysowujemy, gdy przyjdzie z serwera
+        const route = await loadRoute(target);
+        if (cancelled || map.current !== m) return;
+        L.polyline(route.points, { color: "#120c08", weight: 4, opacity: 0.6, dashArray: "2 10", lineCap: "round" }).addTo(m);
+        trail.current = L.polyline([route.points[0]], { color: "#ff5a36", weight: 6, lineCap: "round", lineJoin: "round" }).addTo(m);
+        m.fitBounds(L.latLngBounds(route.points), { padding: [56, 56], maxZoom: 16 });
+        setPath(route);
       } else {
         m.setView([PIZZERIA.lat, PIZZERIA.lng], 16);
       }
@@ -106,17 +108,20 @@ export function RouteMap({
       map.current?.remove();
       map.current = null;
       rider.current = null;
+      trail.current = null;
     };
     // mapę budujemy od nowa tylko, gdy zmienia się trasa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  // Skuter jedzie po łuku razem z szacowanym postępem.
+  // Skuter jedzie po trasie razem z szacowanym postępem (albo stoi tam, gdzie pokazuje GPS).
   useEffect(() => {
     const r = rider.current;
     if (!r) return;
+    const p = riding ? progress : 0;
     r.setOpacity(riding || live ? 1 : 0);
-    r.setLatLng(live ? [live.lat, live.lng] : curvePoint(PIZZERIA, target, riding ? progress : 0));
+    r.setLatLng(live ? [live.lat, live.lng] : path ? pointAt(path, p) : curvePoint(PIZZERIA, target, p));
+    if (path && trail.current) trail.current.setLatLngs(riding && !live ? pathUntil(path, p) : [path.points[0]]);
   });
 
   return <div ref={box} role="img" aria-label={t.tracking.mapAria} className={`route-map relative isolate z-0 w-full bg-[#f2efe9] ${className}`} />;

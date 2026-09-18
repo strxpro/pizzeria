@@ -84,7 +84,7 @@ export function MeltDivider() {
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "start start"] });
   const target = useTransform(scrollYProgress, [0, 1], [0.35, 1.7]);
-  const spring = useScrollSpring(target, { stiffness: 120, damping: 24, mass: 0.6 }, 0.3);
+  const spring = useScrollSpring(target, { stiffness: 150, damping: 26, mass: 0.5 }, 0.8);
   const still = useMotionValue(1);
 
   return (

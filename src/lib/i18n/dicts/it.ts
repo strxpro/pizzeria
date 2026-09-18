@@ -156,6 +156,17 @@ export const it = {
     visit: "vieni a trovarci",
     openMaps: "Apri in Google Maps",
     mapTitle: (q: string) => `Mappa: ${q}`,
+    demo: {
+      live: "Consegna simulata",
+      confirmed: "Ordine confermato!",
+      oven: "Pizza in forno",
+      departed: "Il rider è partito",
+      riding: (street: string) => `Ora in ${street}`,
+      arrived: "Consegnata. Buon appetito!",
+      to: (place: string) => `verso ${place}`,
+      eta: (min: number, km: number) => `${km.toLocaleString("it-IT")} km · ${min} min`,
+      steps: ["Confermato", "In viaggio", "Consegnato"],
+    },
   },
   locate: {
     use: "Usa la mia posizione",

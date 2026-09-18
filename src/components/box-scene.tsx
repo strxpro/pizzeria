@@ -49,7 +49,7 @@ export function BoxScene() {
   const reduced = useReducedMotion();
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
-  const p = useScrollSpring(scrollYProgress, { stiffness: 190, damping: 32, mass: 0.4 }, 0.1);
+  const p = useScrollSpring(scrollYProgress, { stiffness: 260, damping: 36, mass: 0.35 }, 0.35);
 
   const peek = useSpring(0, { stiffness: 220, damping: 16 });
   const tilt = useSpring(0, { stiffness: 120, damping: 18 });

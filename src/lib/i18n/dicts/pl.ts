@@ -153,6 +153,17 @@ export const pl: Dict = {
     visit: "wpadnij do nas",
     openMaps: "Otwórz w Mapach Google",
     mapTitle: (q) => `Mapa: ${q}`,
+    demo: {
+      live: "Symulacja dostawy",
+      confirmed: "Zamówienie potwierdzone!",
+      oven: "Pizza w piecu",
+      departed: "Kurier wyjechał",
+      riding: (street) => `Teraz: ${street}`,
+      arrived: "Dostarczone. Smacznego!",
+      to: (place) => `do: ${place}`,
+      eta: (min, km) => `${km.toLocaleString("pl-PL")} km · ${min} min`,
+      steps: ["Potwierdzone", "W drodze", "Dostarczone"],
+    },
   },
   locate: {
     use: "Użyj mojej lokalizacji",

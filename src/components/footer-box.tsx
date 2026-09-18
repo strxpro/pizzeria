@@ -13,7 +13,7 @@ export function FooterBox({ className = "" }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "center 0.7"] });
-  const p = useScrollSpring(scrollYProgress, { stiffness: 130, damping: 24 }, 0.12);
+  const p = useScrollSpring(scrollYProgress, { stiffness: 160, damping: 26 }, 0.35);
 
   const y = useTransform(p, [0, 1], [-55, 0]);
   const rz = useTransform(p, [0, 1], [-80, -28]);

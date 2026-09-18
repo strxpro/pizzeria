@@ -472,6 +472,29 @@
     width: 36px;
     height: 50px;
   }
+  /* pizzeria „pracuje” (zamówienie potwierdzone, pizza w piecu), dom podskakuje przy dostawie */
+  .map-pin.is-busy svg,
+  .is-busy .map-pin svg {
+    animation: pin-busy 0.9s ease-in-out infinite;
+    transform-origin: 50% 100%;
+  }
+  .map-pin.is-hit svg,
+  .is-hit .map-pin svg {
+    animation: pin-hit 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+    transform-origin: 50% 100%;
+  }
+  @keyframes pin-busy {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-6px) scale(1.06); }
+  }
+  @keyframes pin-hit {
+    0% { transform: scale(1); }
+    40% { transform: translateY(-14px) scale(1.25, 0.85); }
+    100% { transform: none; }
+  }
+  .map-rider svg {
+    transition: transform 0.25s ease;
+  }
   .map-pin span {
     position: absolute;
     top: 50px;
