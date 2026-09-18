@@ -1,8 +1,9 @@
 "use client";
 
-import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
+import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { useRef } from "react";
 import { PizzaBox } from "./pizza-box";
+import { useScrollSpring } from "@/lib/scroll-spring";
 
 /**
  * Zamknięte pudełko w stopce: wlatuje pod kątem, gdy stopka wjeżdża na ekran,
@@ -12,7 +13,7 @@ export function FooterBox({ className = "" }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "center 0.7"] });
-  const p = useSpring(scrollYProgress, { stiffness: 80, damping: 18 });
+  const p = useScrollSpring(scrollYProgress, { stiffness: 130, damping: 24 }, 0.12);
 
   const y = useTransform(p, [0, 1], [-55, 0]);
   const rz = useTransform(p, [0, 1], [-80, -28]);

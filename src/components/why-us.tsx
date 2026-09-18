@@ -70,7 +70,7 @@ export function WhyUs() {
                     whileDrag={{ scale: 1.06, rotate: 0, zIndex: 20, cursor: "grabbing" }}
                     initial={reduced ? false : { scale: 0, rotate: rotate * 4 }}
                     whileInView={{ scale: 1, rotate }}
-                    viewport={{ once: true }}
+                    viewport={{ once: true, margin: "0px 0px 12% 0px" }}
                     transition={{ type: "spring", stiffness: 180, damping: 14, delay: i * 0.08 }}
                     style={{ left: `${left}%`, top: `${top}%` }}
                     className={`absolute cursor-grab rounded-full px-[0.5em] py-[0.12em] text-[clamp(1.7rem,5.6vw,5.2rem)] leading-[1.05] font-extrabold tracking-tight whitespace-nowrap shadow-[0_10px_0_rgb(18_12_8/0.15)] select-none ${TONES[STICKER_TONES[i]]}`}

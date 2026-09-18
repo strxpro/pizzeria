@@ -8,12 +8,12 @@ import {
   useMotionValueEvent,
   useReducedMotion,
   useScroll,
-  useSpring,
   useTransform,
   type MotionValue,
 } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/provider";
+import { useScrollSpring } from "@/lib/scroll-spring";
 import { ART, PizzaArt } from "./pizza-art";
 import { scrollToTarget } from "./smooth-scroll";
 
@@ -84,7 +84,7 @@ export function MeltDivider() {
   const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "start start"] });
   const target = useTransform(scrollYProgress, [0, 1], [0.35, 1.7]);
-  const spring = useSpring(target, { stiffness: 80, damping: 22, mass: 0.8 });
+  const spring = useScrollSpring(target, { stiffness: 120, damping: 24, mass: 0.6 }, 0.3);
   const still = useMotionValue(1);
 
   return (

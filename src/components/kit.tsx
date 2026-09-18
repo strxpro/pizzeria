@@ -47,8 +47,9 @@ export function RiseText({
                   className="inline-block"
                   initial={reduced ? false : { y: "105%" }}
                   {...(immediate ? { animate: play ? { y: 0 } : undefined } : { whileInView: { y: 0 } })}
-                  viewport={{ once: true, margin: "0px 0px -5% 0px" }}
-                  transition={{ duration: 0.55, ease: EASE, delay: delay + i * 0.025 }}
+                  viewport={{ once: true, margin: "0px 0px 12% 0px" }}
+                  /* opóźnienia kolejnych słów mają sufit — przy szybkim przewijaniu nagłówek nie zostaje w połowie */
+                  transition={{ duration: 0.5, ease: EASE, delay: delay + Math.min(i * 0.025, 0.35) }}
                 >
                   {word}
                 </motion.span>
@@ -92,8 +93,8 @@ export function HandNote({
                 className="inline-block"
                 initial={reduced ? false : { opacity: 0, y: "0.3em" }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.2, ease: EASE, delay: delay + i * 0.01 }}
+                viewport={{ once: true, margin: "0px 0px 12% 0px" }}
+                transition={{ duration: 0.2, ease: EASE, delay: delay + Math.min(i * 0.01, 0.3) }}
               >
                 {ch}
               </motion.span>
@@ -124,7 +125,7 @@ export function Rise({
       className={className}
       initial={reduced ? false : { opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "0px 0px -8% 0px" }}
+      viewport={{ once: true, margin: "0px 0px 12% 0px" }}
       transition={{ duration: 0.6, ease: EASE, delay }}
     >
       {children}

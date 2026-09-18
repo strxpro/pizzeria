@@ -349,7 +349,7 @@ function PizzaCard({
         initial={reduced ? false : { opacity: 0, y: 60, rotate: 0 }}
         whileInView={{ opacity: 1, y: index % 2 ? 18 : 0, rotate: tilt }}
         whileHover={reduced ? undefined : { rotate: 0, y: -14, transition: { type: "spring", stiffness: 300, damping: 18 } }}
-        viewport={{ once: true, margin: "0px -5% 0px -5%" }}
+        viewport={{ once: true, margin: "0px 0px 12% 0px" }}
         transition={{ type: "spring", stiffness: 90, damping: 16, delay: Math.min(index, 4) * 0.06 }}
       >
         {/* ikona tej pozycji wyskakuje zza karty — w kolorze ramki, co chwilę podskakuje */}

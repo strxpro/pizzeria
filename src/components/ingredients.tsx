@@ -103,7 +103,7 @@ export function Ingredients() {
                 data-index={i}
                 initial={reduced ? false : { opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "0px 0px -5% 0px" }}
+                viewport={{ once: true, margin: "0px 0px 12% 0px" }}
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.02 * i }}
                 // telefon: krótsza lista, żeby sekcja nie ciągnęła się bez końca
                 className={`relative z-10 ${i >= 6 ? "max-sm:hidden" : ""}`}

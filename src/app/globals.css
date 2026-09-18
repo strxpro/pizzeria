@@ -337,10 +337,8 @@
   .liquid-blob {
     animation: liquid var(--dur, 20s) linear infinite;
   }
-  /* Poza ekranem animacja stoi całkiem (bez warstwy GPU), na telefonie wystarczą dwie plamy. */
-  [data-paused] .liquid-blob {
-    animation: none;
-  }
+  /* Poza ekranem animacja stoi (pauza, nie kasowanie — inaczej plamy wracały skokiem),
+     na telefonie wystarczą dwie plamy. */
   @media (max-width: 640px) {
     .liquid-blob:nth-child(n + 3) {
       display: none;

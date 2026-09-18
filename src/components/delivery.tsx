@@ -1,9 +1,10 @@
 "use client";
 
-import { useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
+import { useMotionValueEvent, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { useRef, useState } from "react";
 import { RESTAURANT, ZONES } from "@/lib/data";
 import { euro } from "@/lib/format";
+import { useScrollSpring } from "@/lib/scroll-spring";
 import { useT } from "@/lib/i18n/provider";
 import { useOrder } from "@/lib/order";
 import { HandNote, Pill } from "./kit";
@@ -24,7 +25,7 @@ export function Delivery() {
 
   // Od wejścia napisu na ekran do jego wyjścia: wjeżdża zza prawej krawędzi i wyjeżdża w lewo.
   const { scrollYProgress } = useScroll({ target: curve, offset: ["start end", "end start"] });
-  const offset = useSpring(useTransform(scrollYProgress, [0, 1], [78, -48]), { stiffness: 90, damping: 22 });
+  const offset = useScrollSpring(useTransform(scrollYProgress, [0, 1], [78, -48]), { stiffness: 130, damping: 26 }, 26);
   useMotionValueEvent(offset, "change", (v) => {
     if (!reduced) textPath.current?.setAttribute("startOffset", `${v}%`);
   });

@@ -12,6 +12,7 @@ import {
 } from "motion/react";
 import { useEffect, useRef, type CSSProperties, type PointerEvent } from "react";
 import { RESTAURANT } from "@/lib/data";
+import { useScrollSpring } from "@/lib/scroll-spring";
 import { useT } from "@/lib/i18n/provider";
 import { HandNote } from "./kit";
 import { Liquid } from "./liquid";
@@ -48,7 +49,7 @@ export function BoxScene() {
   const reduced = useReducedMotion();
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
-  const p = useSpring(scrollYProgress, { stiffness: 140, damping: 28, mass: 0.5 });
+  const p = useScrollSpring(scrollYProgress, { stiffness: 190, damping: 32, mass: 0.4 }, 0.1);
 
   const peek = useSpring(0, { stiffness: 220, damping: 16 });
   const tilt = useSpring(0, { stiffness: 120, damping: 18 });
